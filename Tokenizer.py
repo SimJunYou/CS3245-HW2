@@ -6,8 +6,7 @@ import string
 def make_pair_generator(in_dir, docs_list):
     """
     Generator function for the next (term, doc_id) pair.
-    Call this function to make the generator first, then
-    use next() to generate the next pair.
+    Call this function to make the generator first, then use next() to generate the next pair.
     Yields (None, None) when done.
     """
     for doc_name in docs_list:
@@ -23,9 +22,8 @@ def make_pair_generator(in_dir, docs_list):
 
 def read_and_clean(doc_path):
     """
-    reads document at specified path,
-    does case-folding and returns text
-    (all pre-processing before tokenization goes here)
+    Reads document at specified path, does case-folding and returns text.
+    (All pre-processing before tokenization should go here)
     """
     with open(doc_path, "r") as f:
         return f.read().lower()
@@ -33,8 +31,8 @@ def read_and_clean(doc_path):
 
 def tokenize(doc_text):
     """
-    takes in document text and tokenizes.
-    also does post-tokenization cleaning like stemming
+    Takes in document text and tokenizes.
+    Also does post-tokenization cleaning like stemming.
     """
     stemmer = nltk.stem.porter.PorterStemmer()
     tokens = nltk.tokenize.word_tokenize(doc_text)

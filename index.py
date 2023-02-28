@@ -53,7 +53,7 @@ def build_index(in_dir, out_dict, out_postings):
 
     # all blocks should be written at this point
     # now we need to merge all blocks into one
-    final_dict = merge_blocks(out_dict, out_postings, 5)  # TODO: Replace with block_num
+    final_dict = merge_blocks(out_dict, out_postings, block_num)
     write_block(final_dict, out_dict, out_postings)
 
 
