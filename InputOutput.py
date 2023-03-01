@@ -87,11 +87,10 @@ def read_posting_list(posting_fp, location):
     posting_fp.seek(location, 0)
     posting_str = char = ""
 
-    # move past the document frequency stored
+    # move past the document frequency stored and reset char
     while char != "$":
         char = posting_fp.read(1)
-    # move past of the $ character
-    posting_fp.seek(1)
+    char = ""
 
     # read the entire posting list and stop at terminating char
     while char != "|":

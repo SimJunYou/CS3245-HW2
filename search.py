@@ -25,7 +25,8 @@ def run_search(dict_file, postings_file, queries_file, results_file):
 
     dictionary = get_dictionary(dict_file)
     queries = read_and_parse_queries(queries_file, postings_file, dictionary)
-    print(queries)
+    for query in queries:
+        print(process_query(query, dictionary, postings_file))
     # print(process_query(queries[0], dictionary, postings_file))
 
 
