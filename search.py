@@ -27,7 +27,9 @@ def run_search(dict_file, postings_file, queries_file, results_file):
     queries = read_and_parse_queries(queries_file, postings_file, dictionary)
     with open(results_file, "w") as of:
         for query in queries:
+            # process query, remove skip pointers, convert to string
             result = process_query(query, dictionary, all_doc_ids, postings_file)
+            result = list(map(lambda x: x[0] if isinstance(x, tuple) else x, result))
             result = ",".join(map(str, result))
             print(result, file=of)
 
