@@ -2,6 +2,8 @@ import nltk
 import os
 import string
 
+STEMMER = nltk.stem.porter.PorterStemmer()
+
 
 def make_pair_generator(in_dir, docs_list):
     """
@@ -34,9 +36,16 @@ def tokenize(doc_text):
     Takes in document text and tokenizes.
     Also does post-tokenization cleaning like stemming.
     """
-    stemmer = nltk.stem.porter.PorterStemmer()
     tokens = nltk.tokenize.word_tokenize(doc_text)
-    tokens = [stemmer.stem(tok) for tok in tokens]
+    tokens = [STEMMER.stem(tok) for tok in tokens]
     isNotOnlyPunct = lambda tok: any(char not in string.punctuation for char in tok)
     tokens = [tok for tok in tokens if isNotOnlyPunct(tok)]
     return tokens
+
+
+def clean_operand(operand):
+    """
+    Case-folds and stems a single operand (token).
+    For use in Parser, when parsing queries.
+    """
+    return STEMMER.stem(operand.lower())

@@ -22,6 +22,7 @@ def build_index(in_dir, out_dict, out_postings):
     docs_list = [
         f for f in os.listdir(in_dir) if os.path.isfile(os.path.join(in_dir, f))
     ]
+    docs_list = docs_list[:10]  # TODO: Remove this
 
     # === SPIMI-Invert implementation ===
     # dictionary: Term -> [Term frequency, Set<Doc Ids>]
@@ -53,7 +54,11 @@ def build_index(in_dir, out_dict, out_postings):
 
     # all blocks should be written at this point
     # now we need to merge all blocks into one
-    final_dict = merge_blocks(out_dict, out_postings, block_num)
+    # (if there is only one 'block', don't merge since it's still in memory)
+    if block_num > 1:
+        final_dict = merge_blocks(out_dict, out_postings, block_num)
+    else:
+        final_dict = dictionary
     write_block(final_dict, out_dict, out_postings)
 
 

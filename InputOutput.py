@@ -5,7 +5,7 @@ import os
 # merge_block -> Entry point for all merging operations
 # nway_merge -> Merges multiple posting lists into one
 # read_posting_list -> Reads a posting list out of a posting list block
-# get_index -> Reads the final files and returns an index
+# get_dictionary -> Reads the dictionary file and returns an dictionary
 
 
 def merge_blocks(out_dict, out_postings, block_num):
@@ -86,15 +86,41 @@ def read_posting_list(posting_fp, location):
     """
     posting_fp.seek(location, 0)
     posting_str = char = ""
+
+    # move past the document frequency stored
+    while char != "$":
+        char = posting_fp.read(1)
+    # move past of the $ character
+    posting_fp.seek(1)
+
+    # read the entire posting list and stop at terminating char
     while char != "|":
         posting_str += char
         char = posting_fp.read(1)
+
+    # convert to list of ints and return
+    # TODO: Adapt this for skip pointers
     posting_list = list(map(int, posting_str.split(",")))
     return posting_list
 
 
-def get_index(out_dict):
+def read_doc_freq(posting_fp, location):
     """
+    Reads only the document frequency from the posting list file.
+    For query optimization purposes.
+    """
+    posting_fp.seek(location, 0)
+    doc_freq_str = char = ""
+    while char != "$":
+        doc_freq_str += char
+        char = posting_fp.read(1)
+    doc_freq = int(doc_freq_str)
+    return doc_freq
+
+
+def get_dictionary(out_dict):
+    """
+    FOR SEARCHING ONLY!
     We assume that the full index does not fit in memory, so we only load the dictionary.
     The dictionary lets us read posting lists by their positions in the posting lists file.
     """
@@ -139,10 +165,11 @@ def write_block(dictionary, out_dict, out_postings, block_num=""):
 def serialize_posting(posting_list):
     """
     Turns a posting list into a string, and returns the string.
-    The string format is: "(id1),(id2),(...),(idn)|".
+    The string format is: "(freq)$(id1),(id2^skip),(...),(idn)|".
     The "|" is the terminator character for the serialization.
     """
     posting_list = sorted(list(posting_list))
-    output = ",".join(map(str, posting_list))
-    output += "|"
+    doc_freq = str(len(posting_list))
+    doc_ids = ",".join(map(str, posting_list))  # TODO: Add skip pointers here
+    output = f"{doc_freq}${doc_ids}|"
     return output
