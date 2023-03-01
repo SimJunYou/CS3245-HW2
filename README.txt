@@ -3,7 +3,7 @@ Email(s): e0000000@u.nus.edu
 
 == Python Version ==
 
-I'm (We're) using Python Version <3.8.10 or replace version number> for
+We're using Python Version <3.8.10 or replace version number> for
 this assignment.
 
 == General Notes about this assignment ==
@@ -11,6 +11,9 @@ this assignment.
 Give an overview of your program, describe the important algorithms/steps 
 in your program, and discuss your experiments in general.  A few paragraphs 
 are usually sufficient.
+
+python3 index.py -i <reuters training dir> -d dictionary.txt -p postings.txt
+python3 search.py -d dictionary.txt -p postings.txt -q queries.txt -o output.txt
 
 == Files included with this submission ==
 

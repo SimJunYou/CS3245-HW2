@@ -22,7 +22,7 @@ def build_index(in_dir, out_dict, out_postings):
     docs_list = [
         f for f in os.listdir(in_dir) if os.path.isfile(os.path.join(in_dir, f))
     ]
-    docs_list = docs_list[:10]  # TODO: Remove this
+    # docs_list = docs_list[:10]  # TODO: Remove this
 
     # === SPIMI-Invert implementation ===
     # dictionary: Term -> [Term frequency, Set<Doc Ids>]
@@ -47,7 +47,13 @@ def build_index(in_dir, out_dict, out_postings):
 
         # if memory full, write dictionary to disk and reset in-memory index
         if pairs_processed >= THRESHOLD:
-            write_block(dictionary, out_dict, out_postings, block_num)
+            write_block(
+                dictionary,
+                out_dict,
+                out_postings,
+                block_num=block_num,
+                write_skips=False,
+            )
             block_num += 1
             dictionary = dict()
             pairs_processed = 0
@@ -59,7 +65,12 @@ def build_index(in_dir, out_dict, out_postings):
         final_dict = merge_blocks(out_dict, out_postings, block_num)
     else:
         final_dict = dictionary
-    write_block(final_dict, out_dict, out_postings)
+
+    # finally, we write the final posting list and dictionary to disk
+    # at this step, we will write skip pointers also into the posting list
+    write_block(
+        final_dict, out_dict, out_postings, docs_list=docs_list, write_skips=True
+    )
 
 
 def usage():

@@ -1,5 +1,6 @@
 import pickle
 import os
+from math import floor, sqrt
 
 # === READING AND MERGING ===
 # merge_block -> Entry point for all merging operations
@@ -14,14 +15,18 @@ def merge_blocks(out_dict, out_postings, block_num):
     Next, we start n-way merging all postings into one (new) dictionary.
     """
     print("Starting merge_block")
-    dict_f_list = [str(num) + out_dict for num in range(1, block_num + 1)]
-    post_f_list = [str(num) + out_postings for num in range(1, block_num + 1)]
+
+    # block_num is actually 1 higher than correct, so don't +1 in range
+    dict_f_list = [str(num) + out_dict for num in range(1, block_num)]
+    post_f_list = [str(num) + out_postings for num in range(1, block_num)]
 
     # union all dictionaries into our new dictionary first
     # at this stage, dictionary: term -> [(block num, position), ...]
     dictionary = dict()
     for i, dict_f in enumerate(dict_f_list):
         print(f"Merging {dict_f} into new dictionary")
+        # in merging, the dict file only contains the dictionary!
+        # does not have the set of doc ids
         new_dict = pickle.load(open(dict_f, "rb"))
         new_keys = set(new_dict.keys())
         curr_keys = set(dictionary.keys())
@@ -74,7 +79,6 @@ def nway_merge(posting_block, entries):
         new_posting_list = read_posting_list(curr_posting_file, pos)
         all_lists.append(new_posting_list)
 
-    # TODO: Actually do a n-way merge
     posting_list = list(set([item for sublist in all_lists for item in sublist]))
     return [len(posting_list), posting_list]
 
@@ -98,8 +102,10 @@ def read_posting_list(posting_fp, location):
         char = posting_fp.read(1)
 
     # convert to list of ints and return
-    # TODO: Adapt this for skip pointers
-    posting_list = list(map(int, posting_str.split(",")))
+    parse_list_item = (
+        lambda item: tuple(map(int, item.split("^"))) if "^" in item else int(item)
+    )
+    posting_list = list(map(parse_list_item, posting_str.split(",")))
     return posting_list
 
 
@@ -117,7 +123,7 @@ def read_doc_freq(posting_fp, location):
     return doc_freq
 
 
-def get_dictionary(out_dict):
+def get_dict_and_doc_list(out_dict):
     """
     FOR SEARCHING ONLY!
     We assume that the full index does not fit in memory, so we only load the dictionary.
@@ -131,7 +137,9 @@ def get_dictionary(out_dict):
 # serialize_posting -> Turns a posting list into a formatted string
 
 
-def write_block(dictionary, out_dict, out_postings, block_num=""):
+def write_block(
+    dictionary, out_dict, out_postings, docs_list=[], block_num="", write_skips=False
+):
     """
     For each (term, posting list) pair in the dictionary...
 
@@ -141,7 +149,8 @@ def write_block(dictionary, out_dict, out_postings, block_num=""):
 
     As each term is written, we write the (term, cumulative_ptr) pair into index.
     The cumulative_ptr can be used to directly grab a posting list from the postings file.
-    The index is written into the dictionary file using pickle.
+
+    The (list of all documents, index) tuple is written into the dictionary file using pickle.
     """
     index = dict()
     cumulative_ptr = 0
@@ -149,26 +158,64 @@ def write_block(dictionary, out_dict, out_postings, block_num=""):
     with open(str(block_num) + out_postings, "w") as postings_fp:
         for term, posting_list in dictionary.items():
             posting_list = posting_list[1]  # discard frequency for now
-            posting_list_serialized = serialize_posting(posting_list)
+            posting_list_serialized = serialize_posting(posting_list, write_skips)
             index[term] = cumulative_ptr
             cumulative_ptr += len(posting_list_serialized)
             postings_fp.write(posting_list_serialized)
 
-    pickle.dump(index, open(str(block_num) + out_dict, "wb"))
+    # we want to store the docs_list with each doc as a set of integers
+    if docs_list:
+        docs_list = set(map(int, docs_list))
+        pickle.dump((index, docs_list), open(str(block_num) + out_dict, "wb"))
+    else:
+        pickle.dump(index, open(str(block_num) + out_dict, "wb"))
+
     if block_num:
         print(f"Wrote {len(dictionary)} terms into block number {block_num}")
     else:
         print(f"Wrote {len(dictionary)} terms into final files")
 
 
-def serialize_posting(posting_list):
+def serialize_posting(posting_list, write_skips):
     """
     Turns a posting list into a string, and returns the string.
     The string format is: "(freq)$(id1),(id2^skip),(...),(idn)|".
+    Skip denotes how many characters to skip to get to the next number.
     The "|" is the terminator character for the serialization.
     """
     posting_list = sorted(list(posting_list))
     doc_freq = str(len(posting_list))
-    doc_ids = ",".join(map(str, posting_list))  # TODO: Add skip pointers here
+
+    if write_skips:
+        # convert to posting list with skips, then convert the skips to string form
+        posting_list = add_skips_to_posting(posting_list)
+        for i, item in enumerate(posting_list):
+            if isinstance(item, tuple):
+                posting_list[i] = f"{item[0]}^{item[1]}"
+
+    doc_ids = ",".join(map(str, posting_list))
     output = f"{doc_freq}${doc_ids}|"
     return output
+
+
+def add_skips_to_posting(posting_list):
+    """
+    Adds skip pointers to existing posting list.
+    Changes existing doc id items into (doc id, skip interval) tuple.
+    Returns new posting list.
+    Does not do anything if list length is below 4!
+    """
+    # posting list should have at least 4 elements for skip pointers to be efficient
+    if len(posting_list) < 4:
+        return posting_list
+
+    # calculate the last index which should contain a skip
+    size = len(posting_list)
+    skip_interval = floor(sqrt(size))
+    last_skip = (size - 1) - skip_interval
+    last_skip = last_skip - (last_skip % skip_interval)
+
+    for i, doc_id in enumerate(posting_list):
+        if i <= last_skip and i % skip_interval == 0:
+            posting_list[i] = (doc_id, skip_interval)
+    return posting_list

@@ -1,7 +1,7 @@
-from InputOutput import read_posting_list
+from InputOutput import read_posting_list, add_skips_to_posting
 
 
-def process_query(query, dictionary, postings_file):
+def process_query(query, dictionary, all_doc_ids, postings_file):
     """
     Generates an in-memory index, containing only terms found in the query.
     Converts the query into a nested operator form (see below).
@@ -18,14 +18,11 @@ def process_query(query, dictionary, postings_file):
                     index[term] = []
 
     wrapped = wrap_query(query)
-    print(wrapped)
-    print(index)
 
     # if it is an operator, call resolve on the outermost operator
     # to recursively resolve all inner operators
     if isinstance(wrapped, Operator):
-        print("Single operator! Resolving...")
-        return wrapped.resolve(index)
+        return wrapped.resolve(index, all_doc_ids)
 
     # otherwise, it will be a (term, doc freq) tuple
     # just return the posting list
@@ -104,7 +101,7 @@ class Or(Operator):
         super().__init__(operands)
         self.type = 0
 
-    def resolve(self, index):
+    def resolve(self, index, all_doc_ids):
         """
         Resolves the operands stored in the current operator using the given index.
         Returns a posting list.
@@ -112,7 +109,11 @@ class Or(Operator):
         # first, recursively optimize all unresolved operands in the operand list
         # self.operands should only contain (term, doc freq) tuples
         self.operands = [
-            (operand.resolve(index) if isinstance(operand, Operator) else operand)
+            (
+                operand.resolve(index, all_doc_ids)
+                if isinstance(operand, Operator)
+                else operand
+            )
             for operand in self.operands
         ]
         # at this point, self.operands only contains either term-freq tuples or posting lists
@@ -126,14 +127,23 @@ class Or(Operator):
             # otherwise, it is a posting list and we append it directly
             else:
                 posting_lists.append(op)
+        # at this point, self.operands only contains posting lists
 
         final_list = posting_lists[0]
         for next_list in posting_lists[1:]:
             final_list = self.union(final_list, next_list)
+
         return final_list
 
     def union(self, list1, list2):
-        return list(set([*list1, *list2]))
+        """
+        Removes skip pointers, concatenate, then convert to set to remove duplicates.
+        Convert back to list, add skip pointers, then return.
+        """
+
+        list1 = list(map(lambda x: x[0] if isinstance(x, tuple) else x, list1))
+        list2 = list(map(lambda x: x[0] if isinstance(x, tuple) else x, list2))
+        return add_skips_to_posting(list(set([*list1, *list2])))
 
 
 class And(Operator):
@@ -141,7 +151,7 @@ class And(Operator):
         super().__init__(operands)
         self.type = 1
 
-    def resolve(self, index):
+    def resolve(self, index, all_doc_ids):
         """
         Resolves the operands stored in the current operator using the given index.
         Returns a posting list.
@@ -149,12 +159,16 @@ class And(Operator):
         # first, recursively optimize all unresolved operands in the operand list
         # self.operands should only contain (term, doc freq) tuples
         self.operands = [
-            (operand.resolve(index) if isinstance(operand, Operator) else operand)
+            (
+                operand.resolve(index, all_doc_ids)
+                if isinstance(operand, Operator)
+                else operand
+            )
             for operand in self.operands
         ]
         # at this point, self.operands only contains either term-freq tuples or posting lists
 
-        # sort by ascending doc freq order
+        # ONLY FOR AND OPERATOR: sort by ascending doc freq order
         self.operands.sort(key=lambda x: x[1] if isinstance(x, tuple) else len(x))
 
         posting_lists = []
@@ -166,6 +180,7 @@ class And(Operator):
             # otherwise, it is a posting list and we append it directly
             else:
                 posting_lists.append(op)
+        # at this point, self.operands only contains posting lists
 
         # if there is only one posting list, return it
         if len(posting_lists) == 1:
@@ -177,8 +192,36 @@ class And(Operator):
         return final_list
 
     def intersect(self, list1, list2):
-        # TODO: implement this shit
-        return list(set(list1) & set(list2))
+        """
+        Custom intersect algorithm using skip pointers.
+        Skip pointers tell the algorithm how many indices to jump ahead by.
+        Otherwise, pretty standard merging algorithm.
+        """
+        get_terms = lambda x: x[0] if isinstance(x, tuple) else x
+        get_skips = lambda x: x[1] if isinstance(x, tuple) else None
+
+        ptr1 = ptr2 = 0
+        output = []
+        while ptr1 < len(list1) and ptr2 < len(list2):
+            val1, val2 = get_terms(list1[ptr1]), get_terms(list2[ptr2])
+            skp1, skp2 = get_skips(list1[ptr1]), get_skips(list2[ptr2])
+            if val1 == val2:
+                output.append(val1)
+                ptr1 += 1
+                ptr2 += 1
+            elif val1 > val2:
+                if skp2 and get_terms(list2[ptr2 + skp2]) <= val1:
+                    ptr2 += skp2
+                else:
+                    ptr2 += 1
+            else:
+                if skp1 and get_terms(list1[ptr1 + skp1]) <= val2:
+                    ptr1 += skp1
+                else:
+                    ptr1 += 1
+
+        output = add_skips_to_posting(output)
+        return output
 
 
 class Not(Operator):
@@ -186,6 +229,40 @@ class Not(Operator):
         super().__init__(operands)
         self.type = 2
 
-    def resolve(self, index):
-        # TODO: implement this shit
-        pass
+    def resolve(self, index, all_doc_ids):
+        """
+        Resolves the operands stored in the current operator using the given index.
+        Returns a posting list.
+        """
+
+        # ONLY FOR NOT OPERATOR: self.operands should only contain a single operand
+        # first, recursively optimize all unresolved operands in the operand list
+        # self.operands should only contain (term, doc freq) tuples
+        if isinstance(self.operands[0], Operator):
+            self.operands[0] = self.operands[0].resolve(index, all_doc_ids)
+
+        # at this point, self.operands only contains either term-freq tuples or posting lists
+
+        posting_lists = []
+        for op in self.operands:
+            # if op is a (term, doc freq) tuple, convert it to a posting list
+            if isinstance(op, tuple):
+                term, _ = op
+                posting_lists.append(index[term])
+            # otherwise, it is a posting list and we append it directly
+            else:
+                posting_lists.append(op)
+        # at this point, self.operands only contains posting lists
+
+        return self.invert(self.operands[0], all_doc_ids)
+
+    def invert(self, posting_list, all_doc_ids):
+        """
+        This method should only take in a single posting list, assuming our
+        queries are properly formed.
+        all_doc_ids should already be a set, so we just do set difference.
+        Return list after adding skip pointers.
+        """
+        total_set = set(posting_list)
+        output = list(all_doc_ids - total_set)
+        return add_skips_to_posting(output)

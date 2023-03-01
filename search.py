@@ -4,7 +4,7 @@ import nltk
 import sys
 import getopt
 from Parser import read_and_parse_queries
-from InputOutput import get_dictionary
+from InputOutput import get_dict_and_doc_list
 from Searcher import process_query
 
 
@@ -23,11 +23,13 @@ def run_search(dict_file, postings_file, queries_file, results_file):
     """
     print("running search on the queries...")
 
-    dictionary = get_dictionary(dict_file)
+    dictionary, all_doc_ids = get_dict_and_doc_list(dict_file)
     queries = read_and_parse_queries(queries_file, postings_file, dictionary)
-    for query in queries:
-        print(process_query(query, dictionary, postings_file))
-    # print(process_query(queries[0], dictionary, postings_file))
+    with open(results_file, "w") as of:
+        for query in queries:
+            result = process_query(query, dictionary, all_doc_ids, postings_file)
+            result = ",".join(map(str, result))
+            print(result, file=of)
 
 
 dictionary_file = postings_file = file_of_queries = output_file_of_results = None
