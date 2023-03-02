@@ -42,7 +42,9 @@ def wrap_query(query):
             stack.append(op)
         else:
             if op == 2:
-                newOperator = Not(stack.pop())
+                newOperator = Not()
+                newOperator.add(stack.pop())
+                print(newOperator.operands)
                 stack.append(newOperator)
             elif op == 1:
                 newOperator = And()
@@ -69,15 +71,11 @@ class Operator:
     As such, list methods like 'append' are replaced with tuple equivalents.
     """
 
-    def __init__(self, operands=tuple()):
-        self.operands = operands
+    def __init__(self):
+        self.operands = tuple()
         self.type = None
 
     def add(self, operand, debug=""):
-        # we cannot add operands to a NOT operator
-        if self.type == 2:
-            return
-
         # if new operand is an operator of the same type (e.g. OR and OR),
         # just add the operator's operands into this operator's operands
         if isinstance(operand, Operator):
@@ -97,8 +95,8 @@ class Operator:
 
 
 class Or(Operator):
-    def __init__(self, operands=tuple()):
-        super().__init__(operands)
+    def __init__(self):
+        super().__init__()
         self.type = 0
 
     def resolve(self, index, all_doc_ids):
@@ -147,8 +145,8 @@ class Or(Operator):
 
 
 class And(Operator):
-    def __init__(self, operands=tuple()):
-        super().__init__(operands)
+    def __init__(self):
+        super().__init__()
         self.type = 1
 
     def resolve(self, index, all_doc_ids):
@@ -166,6 +164,7 @@ class And(Operator):
             )
             for operand in self.operands
         ]
+
         # at this point, self.operands only contains either term-freq tuples or posting lists
 
         # ONLY FOR AND OPERATOR: sort by ascending doc freq order
@@ -225,8 +224,8 @@ class And(Operator):
 
 
 class Not(Operator):
-    def __init__(self, operands=tuple()):
-        super().__init__(operands)
+    def __init__(self):
+        super().__init__()
         self.type = 2
 
     def resolve(self, index, all_doc_ids):
@@ -236,25 +235,16 @@ class Not(Operator):
         """
 
         # ONLY FOR NOT OPERATOR: self.operands should only contain a single operand
+        assert len(self.operands) == 1, "NOT operator has the wrong number of operands!"
+
         # first, recursively optimize all unresolved operands in the operand list
         # self.operands should only contain (term, doc freq) tuples
         if isinstance(self.operands[0], Operator):
             self.operands[0] = self.operands[0].resolve(index, all_doc_ids)
 
-        # at this point, self.operands only contains either term-freq tuples or posting lists
+        posting_list = index[self.operands[0][0]]
 
-        posting_lists = []
-        for op in self.operands:
-            # if op is a (term, doc freq) tuple, convert it to a posting list
-            if isinstance(op, tuple):
-                term, _ = op
-                posting_lists.append(index[term])
-            # otherwise, it is a posting list and we append it directly
-            else:
-                posting_lists.append(op)
-        # at this point, self.operands only contains posting lists
-
-        return self.invert(self.operands[0], all_doc_ids)
+        return self.invert(posting_list, all_doc_ids)
 
     def invert(self, posting_list, all_doc_ids):
         """
