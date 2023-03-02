@@ -73,17 +73,18 @@ def parse_query(query_string):
     Cleans each operand using Tokenizer module's clean_token function.
     Does operator conversion before returning the final list.
     """
+    query_string = query_string.replace("(", " ( ")
+    query_string = query_string.replace(")", " ) ")
     tokens = query_string.split(" ")
+
     query = []
     # split parantheses from the tokens
     for tok in tokens:
-        if tok.startswith("("):
+        if tok == "(":
             query.append("(")
-            query.append(tok[1:])
-        elif tok.endswith(")"):
-            query.append(tok[:-1])
+        elif tok == ")":
             query.append(")")
-        else:
+        elif tok:
             query.append(tok)
 
     # given original input "bill OR Gates AND (vista OR XP) AND NOT mac"...

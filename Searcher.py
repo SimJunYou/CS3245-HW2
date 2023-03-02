@@ -44,7 +44,6 @@ def wrap_query(query):
             if op == 2:
                 newOperator = Not()
                 newOperator.add(stack.pop())
-                print(newOperator.operands)
                 stack.append(newOperator)
             elif op == 1:
                 newOperator = And()
@@ -66,8 +65,7 @@ def wrap_query(query):
 class Operator:
     """
     Parent class for all operators.
-    Operands are stored in tuples to avoid this weird memory glitch
-    where lists get duplicated.
+    Operands are stored in tuples to avoid this weird memory glitch where lists get duplicated.
     As such, list methods like 'append' are replaced with tuple equivalents.
     """
 
@@ -135,13 +133,37 @@ class Or(Operator):
 
     def union(self, list1, list2):
         """
-        Removes skip pointers, concatenate, then convert to set to remove duplicates.
-        Convert back to list, add skip pointers, then return.
+        Custom union algorithm NOT using skip pointers.
         """
+        get_terms = lambda x: x[0] if isinstance(x, tuple) else x
 
-        list1 = list(map(lambda x: x[0] if isinstance(x, tuple) else x, list1))
-        list2 = list(map(lambda x: x[0] if isinstance(x, tuple) else x, list2))
-        return add_skips_to_posting(list(set([*list1, *list2])))
+        ptr1 = ptr2 = 0
+        output = []
+        while ptr1 < len(list1) and ptr2 < len(list2):
+            val1, val2 = get_terms(list1[ptr1]), get_terms(list2[ptr2])
+            if val1 == val2:
+                output.append(val1)
+                ptr1 += 1
+                ptr2 += 1
+            elif val1 > val2:
+                output.append(val2)
+                ptr2 += 1
+            else:
+                output.append(val1)
+                ptr1 += 1
+
+        # after the above while loop, one list will be exhausted
+        # therefore, only one of the following while loops will run
+        # to add the remaining items from the non-exhausted list
+        while ptr1 < len(list1):
+            output.append(get_terms(list1[ptr1]))
+            ptr1 += 1
+        while ptr2 < len(list2):
+            output.append(get_terms(list2[ptr2]))
+            ptr2 += 1
+
+        output = add_skips_to_posting(output)
+        return output
 
 
 class And(Operator):
@@ -246,10 +268,9 @@ class Not(Operator):
 
         return self.invert(posting_list, all_doc_ids)
 
-    def invert(self, posting_list, all_doc_ids):
+    def invert(self, list1, full_list):
         """
-        This method should only take in a single posting list, assuming our
-        queries are properly formed.
+        This method should only take in a single posting list, assuming our queries are properly formed.
         all_doc_ids should already be a set, so we just do set difference.
         Return list after adding skip pointers.
         """
